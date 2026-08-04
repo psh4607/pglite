@@ -558,6 +558,11 @@ export class PGlite
           pgInitDbOpts.dataDir = undefined
           pgInitDbOpts.extensions = undefined
           pgInitDbOpts.loadDataDir = undefined
+          // The initdb instance must run on its own scratch filesystem: a
+          // user-provided `fs` must not leak into it, or its second `init()`
+          // collides with resources the outer instance already holds (e.g. an
+          // OPFS VFS's sync access handles, which are exclusive per file).
+          pgInitDbOpts.fs = undefined
           const pg_initDb = await PGlite.create(pgInitDbOpts)
 
           // Initialize the database
@@ -820,6 +825,10 @@ export class PGlite
     this.#ready = false
     this.#running = false
 
+    // PGlite modifies process.exitCode when it does exit(XX)
+    // we need to restore the previous value
+    const prevExitCode = pglUtils.pgliteProc.exitCode
+
     try {
       // exit the runtime. since we're using `noExitRuntime: true` on our module,
       // we need to do this explicitly
@@ -829,6 +838,8 @@ export class PGlite
       if (e.status !== 0) {
         this.#log('Error when exiting', e.toString())
       }
+    } finally {
+      pglUtils.pgliteProc.exitCode = prevExitCode
     }
   }
 
